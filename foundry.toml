@@ -52,7 +52,7 @@ wrap_comments = true
 
 [rpc_endpoints]
 arbitrum = "https://arbitrum-mainnet.infura.io/v3/${INFURA_KEY}"
-base = "${BASE_RPC}"
+base = "https://base-mainnet.infura.io/v3/${INFURA_KEY}"
 gnosis = "${GC_RPC}"
 local = "http://localhost:8545"
 mainnet = "https://mainnet.infura.io/v3/${INFURA_KEY}"
