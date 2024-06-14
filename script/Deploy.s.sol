@@ -2,15 +2,16 @@
 pragma solidity ^0.8.19;
 
 import { Script, console2 } from "forge-std/Script.sol";
-import { Module } from "../src/Module.sol";
+import { HatsModuleFactory } from "../lib/hats-module/src/HatsModuleFactory.sol";
+import { LatestNounsBuilderNFTEligibility } from "../src/LatestNounsBuilderNFTEligibility.sol";
 
-contract Deploy is Script {
-  Module public implementation;
-  bytes32 public SALT = bytes32(abi.encode("change this to the value of your choice"));
+contract DeployImplementation is Script {
+  LatestNounsBuilderNFTEligibility public implementation;
+  bytes32 public SALT = bytes32(abi.encode(0x4a75));
 
   // default values
   bool internal _verbose = true;
-  string internal _version = "0.0.1"; // increment this with each new deployment
+  string internal _version = "0.1.0"; // increment this with each new deployment
 
   /// @dev Override default values, if desired
   function prepare(bool verbose, string memory version) public {
@@ -26,7 +27,7 @@ contract Deploy is Script {
 
   function _log(string memory prefix) internal view {
     if (_verbose) {
-      console2.log(string.concat(prefix, "Module:"), address(implementation));
+      console2.log(string.concat(prefix, "Implementation:"), address(implementation));
     }
   }
 
@@ -42,7 +43,7 @@ contract Deploy is Script {
      *       never differs regardless of where its being compiled
      *    2. The provided salt, `SALT`
      */
-    implementation = new Module{ salt: SALT }(_version /* insert constructor args here */ );
+    implementation = new LatestNounsBuilderNFTEligibility{ salt: SALT }(_version /* insert constructor args here */ );
 
     vm.stopBroadcast();
 
@@ -50,21 +51,57 @@ contract Deploy is Script {
   }
 }
 
-/// @dev Deploy pre-compiled ir-optimized bytecode to a non-deterministic address
-contract DeployPrecompiled is Deploy {
-  /// @dev Update SALT and default values in Deploy contract
+contract DeployInstance is Script {
+  HatsModuleFactory public factory = HatsModuleFactory(0x0a3f85fa597B6a967271286aA0724811acDF5CD9);
+  LatestNounsBuilderNFTEligibility public instance;
 
-  function run() public override {
+  // default values
+  bool internal _verbose = true;
+  address internal _implementation;
+  uint256 internal _saltNonce = 1;
+  uint256 internal _hatId;
+  address internal _token;
+
+  /// @dev Override default values, if desired
+  function prepare(bool verbose, address implementation, uint256 hatId, address token, uint256 saltNonce) public {
+    _verbose = verbose;
+    _implementation = implementation;
+    _hatId = hatId;
+    _saltNonce = saltNonce;
+    _token = token;
+  }
+
+  /// @dev Set up the deployer via their private key from the environment
+  function deployer() public returns (address) {
+    uint256 privKey = vm.envUint("PRIVATE_KEY");
+    return vm.rememberKey(privKey);
+  }
+
+  function _log(string memory prefix) internal view {
+    if (_verbose) {
+      console2.log(string.concat(prefix, "Instance:"), address(instance));
+    }
+  }
+
+  /// @dev Deploy the contract to a deterministic address via forge's create2 deployer factory.
+  function run() public virtual returns (LatestNounsBuilderNFTEligibility) {
     vm.startBroadcast(deployer());
 
-    bytes memory args = abi.encode( /* insert constructor args here */ );
-
-    /// @dev Load and deploy pre-compiled ir-optimized bytecode.
-    implementation = Module(deployCode("optimized-out/Module.sol/Module.json", args));
+    instance = LatestNounsBuilderNFTEligibility(
+      factory.createHatsModule(
+        _implementation,
+        _hatId,
+        abi.encodePacked(_token), // other immutable args
+        abi.encode(), // init data
+        _saltNonce
+      )
+    );
 
     vm.stopBroadcast();
 
-    _log("Precompiled ");
+    _log("");
+
+    return instance;
   }
 }
 
