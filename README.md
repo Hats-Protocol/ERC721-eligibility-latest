@@ -1,8 +1,18 @@
-# hats-module-template
+# Latest Nouns Builder NFT Eligibility
 
-Template repo for Hats Module projects.
+A [Hats Protocol](https://github.com/hats-protocol) Module that determines eligibility for a hat based on ownership of the most recently auctioned NFT for a DAO using the [Nouns Builder](https://nouns.build) V2 framework.
 
 ## Overview and Usage
+
+Nounish DAOs auction off a new NFT automatically on a regular, periodic basis (often daily). Nounish DAOs can use this module to automatically assign eligibility for a given hat to the owner of the NFT that was most recently auctioned off. 
+
+An account is considered the owner of the most recently auctioned NFT (and therefore eligible) if the following are true:
+
+1. The account is the current owner of the NFT
+2. The auction for their NFT has been settled
+3. No subsequent auctions have been settled
+
+If a subsequent auction has been settled without a winner (e.g. because there were no valid bids) then no account is considered eligible.
 
 ## Development
 
