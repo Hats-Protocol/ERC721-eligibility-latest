@@ -1,6 +1,10 @@
+[submodule "lib/hats-module"]
+	path = lib/hats-module
+	url = https://github.com/hats-protocol/hats-module
 [submodule "lib/forge-std"]
 	path = lib/forge-std
 	url = https://github.com/foundry-rs/forge-std
-[submodule "lib/hats-module"]
-	path = lib/hats-module
-	url = https://github.com/Hats-Protocol/hats-module
+[submodule "lib/nouns-protocol"]
+	path = lib/nouns-protocol
+	url = https://github.com/ourzora/nouns-protocol
+	branch = main
