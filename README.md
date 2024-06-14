@@ -4,7 +4,7 @@ A [Hats Protocol](https://github.com/hats-protocol) Module that determines eligi
 
 ## Overview and Usage
 
-Nounish DAOs auction off a new NFT automatically on a regular, periodic basis (often daily). Nounish DAOs can use this module to automatically assign eligibility for a given hat to the owner of the NFT that was most recently auctioned off. 
+Nounish DAOs auction off a new NFT automatically on a regular, periodic basis (often daily). Nounish DAOs can use this module to automatically assign eligibility for a given hat to the owner of the NFT that was most recently auctioned off.
 
 An account is considered the owner of the most recently auctioned NFT (and therefore eligible) if the following are true:
 
