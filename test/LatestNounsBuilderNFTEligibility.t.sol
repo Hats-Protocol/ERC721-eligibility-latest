@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-import { Test, console2 } from "forge-std/Test.sol";
+import { Test, console2, stdStorage, StdStorage } from "forge-std/Test.sol";
 import { LatestNounsBuilderNFTEligibility } from "../src/LatestNounsBuilderNFTEligibility.sol";
 import { IToken } from "../src/lib/IToken.sol";
 import { IAuction } from "../src/lib/IAuction.sol";
@@ -34,7 +34,7 @@ contract LatestNounsBuilderNFTEligibilityTest is DeployImplementation, Test {
   // Purple DAO's contracts on Base
   // The token on auction at block 15794717 is #554, so we expect #553 to be the last auctioned token
   IToken public token = IToken(0x8de71d80eE2C4700bC9D4F8031a2504Ca93f7088);
-  IAuction public auctionContract = IAuction(0x73Ab6d816FB9FE1714E477C5a70D94E803b56576);
+  IAuction public auctionContract;
 
   function setUp() public virtual {
     // create and activate a fork, at BLOCK_NUMBER
@@ -46,51 +46,44 @@ contract LatestNounsBuilderNFTEligibilityTest is DeployImplementation, Test {
   }
 
   function _getCurrentAuctionTokenId() internal view returns (uint256) {
-    IAuction auction = IAuction(token.auction());
-    return auction.auction().tokenId;
+    return auctionContract.auction().tokenId;
   }
 
-  function _pauseAuction() internal returns (IAuction auction) {
-    // get the auction contract
-    auction = IAuction(token.auction());
+  function _pauseAuction() internal {
     // get the auction owner
-    address auctionOwner = auction.owner();
+    address auctionOwner = auctionContract.owner();
     // pause the auction
     vm.prank(auctionOwner);
-    auction.pause();
+    auctionContract.pause();
   }
 
   function _settlePausedAuction() internal {
-    // get the auction contract
-    IAuction auction = IAuction(token.auction());
     // get the auction status
-    IAuction.Auction memory currentAuction = auction.auction();
+    IAuction.Auction memory currentAuction = auctionContract.auction();
     // advance time to the end of the auction
     vm.warp(currentAuction.endTime + 1);
     // settle the auction
-    auction.settleAuction();
+    auctionContract.settleAuction();
   }
 
   function _pauseAndSettleAuction() internal {
-    // pause the auction and get the auction contract
-    IAuction auction = _pauseAuction();
+    // pause the auction
+    _pauseAuction();
     // get the current auction status
-    IAuction.Auction memory currentAuction = auction.auction();
+    IAuction.Auction memory currentAuction = auctionContract.auction();
     // advance time to the end of the auction
     vm.warp(currentAuction.endTime + 1);
     // settle the auction
-    auction.settleAuction();
+    auctionContract.settleAuction();
   }
 
   function _settleCurrentAndCreateNewAuction() internal {
-    // get the current auction
-    IAuction auction = IAuction(token.auction());
     // get the current auction status
-    IAuction.Auction memory currentAuction = auction.auction();
+    IAuction.Auction memory currentAuction = auctionContract.auction();
     // advance time to the end of the auction
     vm.warp(currentAuction.endTime + 1);
     // settle the current auction
-    auction.settleCurrentAndCreateNewAuction();
+    auctionContract.settleCurrentAndCreateNewAuction();
   }
 
   function _createBidForAccount(address _bidder) internal {
@@ -126,6 +119,9 @@ contract WithInstanceTest is LatestNounsBuilderNFTEligibilityTest {
     // run the script to deploy the module instance
     deployInstance.prepare(false, address(implementation), hatId, address(token), saltNonce);
     instance = deployInstance.run();
+
+    // set the auction contract
+    auctionContract = IAuction(token.auction());
   }
 }
 
@@ -195,6 +191,8 @@ contract GetLastAuctionedTokenId is WithInstanceTest {
 }
 
 contract GetWearerStatus is WithInstanceTest {
+  using stdStorage for StdStorage;
+
   /// @dev Asserts that an account is eligible and in good standing the hat.
   function assertEligible(address _account, uint256 _hatId) public view {
     (bool eligible, bool standing) = instance.getWearerStatus(_account, _hatId);
@@ -308,5 +306,82 @@ contract GetWearerStatus is WithInstanceTest {
     // now the second auction is settled and new one is created, making alice ineligible
     _settleCurrentAndCreateNewAuction(); // settled auction 555
     assertIneligible(alice, hatId);
+  }
+
+  function test_founderToken() public {
+    // select a token id just prior to a future founder token
+    uint256 targetToken = 599;
+
+    // have some other account win the auctions between now and the target token
+    address otherAccount = address(11);
+    // HACK: this takes a while in tests
+    while (_getCurrentAuctionTokenId() < targetToken) {
+      _settleAuctionForWinner(otherAccount);
+    }
+
+    // have alice win the auction for the target token
+    _settleAuctionForWinner(alice);
+
+    // confirm that the next two tokens have been minted
+    assertNotEq(token.ownerOf(targetToken + 1), address(0));
+    assertNotEq(token.ownerOf(targetToken + 2), address(0));
+
+    // alice should be eligible
+    assertEligible(alice, hatId);
+  }
+
+  /**
+   * @dev Fast forwards to the auction for a given (assumed) future tokenId.
+   * Sets the following values directly in storage:
+   * - the current auction's token id => _tokenId
+   * - the owner of the target token => auctionContract
+   * - updates the settings.mintCount to reconcile with the above
+   */
+  function _skipToAuctionForToken(uint256 _targetTokenId) internal {
+    // cache the current auction token id
+    uint256 ogTokenId = _getCurrentAuctionTokenId();
+
+    // set the current auction's token id to the target
+    stdstore.target(address(auctionContract)).sig("auction()").depth(0).checked_write(_targetTokenId);
+    // confirm that the current token id is the target
+    assertEq(_getCurrentAuctionTokenId(), _targetTokenId);
+
+    // set the target token's owner to the auction contract. We need to calculate the storage slot manually because
+    // stdstore doesn't work when the function reverts, which happens for ownerOf when the tokenId has not yet been
+    // minted
+    vm.store(address(token), _getOwnerSlot(_targetTokenId), bytes32(uint256(uint160(address(auctionContract)))));
+    // confirm that the owner of the target token is the auction contract
+    assertEq(token.ownerOf(_targetTokenId), address(auctionContract));
+
+    // increment the mintCount to be true for the target token
+    // FIXME: the "mintCoun()" function doesn't exist, so need to find another way
+    uint256 mintCount = stdstore.target(address(token)).sig("mintCount()").depth(4).read_uint();
+    uint256 increment = _targetTokenId - ogTokenId;
+    stdstore.target(address(token)).sig("mintCount()").depth(4).checked_write(mintCount + increment);
+  }
+
+  /// @dev Calculates the storage slot for the owner of a tokenId.
+  function _getOwnerSlot(uint256 tokenId) internal pure returns (bytes32) {
+    // The `owners` mapping begins at slot 10 in Token.sol
+    return keccak256(abi.encode(tokenId, uint256(10)));
+  }
+}
+
+contract IsFounderToken is WithInstanceTest {
+  // test a few know cases
+  function test_founderToken() public view {
+    // Purple DAO has two founders, each with 1% ownership. This means that the first two tokens of each set of 100 are
+    // founder tokens
+    assertTrue(instance.isFounderToken(0));
+    assertTrue(instance.isFounderToken(1));
+    assertFalse(instance.isFounderToken(2));
+    assertFalse(instance.isFounderToken(99));
+    assertTrue(instance.isFounderToken(100));
+    assertTrue(instance.isFounderToken(101));
+    assertFalse(instance.isFounderToken(102));
+    assertTrue(instance.isFounderToken(400));
+    assertFalse(instance.isFounderToken(250));
+    assertTrue(instance.isFounderToken(1000));
+    assertFalse(instance.isFounderToken(100_000_003));
   }
 }

@@ -12,7 +12,10 @@ An account is considered the owner of the most recently auctioned NFT (and there
 2. The auction for their NFT has been settled
 3. No subsequent auctions have been settled
 
-If a subsequent auction has been settled without a winner (e.g. because there were no valid bids) then no account is considered eligible.
+Additionally...
+
+- If a subsequent auction has been settled without a winner (e.g. because there were no valid bids) then no account is considered eligible.
+- If the subsequent auction(s) was skipped for founder tokens, then the account that owns that last actually-auctioned NFT is considered eligible.
 
 ## Development
 

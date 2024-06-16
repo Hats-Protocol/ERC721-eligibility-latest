@@ -84,15 +84,15 @@ contract LatestNounsBuilderNFTEligibility is HatsEligibilityModule {
   //////////////////////////////////////////////////////////////*/
 
   /**
-   * @notice Get the id of the most recently auctioned token for `_token`.
+   * @notice Get the id of the most recently auctioned token for `_token`, skipping founder tokens.
    * If the auction was settled without a winner, the returned token id will not have an owner.
    *
    * @dev Return the present auction's token id if it has been settled with a winner, otherwise it returns
    * the id of the previous auction.
    *
-   * @return The id of the most recently auctioned token.
+   * @return tokenId The id of the most recently auctioned token.
    */
-  function getLastAuctionedTokenId() public view returns (uint256) {
+  function getLastAuctionedTokenId() public view returns (uint256 tokenId) {
     // get the auction contract
     IAuction auctionContract = IAuction(TOKEN().auction());
 
@@ -101,10 +101,41 @@ contract LatestNounsBuilderNFTEligibility is HatsEligibilityModule {
 
     // if the auction is settled with a winner, we want the current auction's token;
     if (currentAuction.settled && currentAuction.highestBidder > address(0)) {
-      return currentAuction.tokenId;
+      tokenId = currentAuction.tokenId;
     } else {
       // otherwise, we want the previous auction's token
-      return currentAuction.tokenId - 1;
+      tokenId = currentAuction.tokenId - 1;
     }
+
+    // We skip founder tokens. There can be multiple founder tokens in a row, so iterate backwards until we find a
+    // non-founder token.
+    while (isFounderToken(tokenId)) {
+      tokenId--;
+    }
+  }
+
+  /**
+   * @notice Checks if a given token was minted to a founder
+   * @dev Matches the logic here:
+   * https://github.com/ourzora/nouns-protocol/blob/98b65e2368c52085ff3844779afd45162eb1cc7d/src/token/Token.sol#L263
+   * @param _tokenId The ERC-721 token id
+   * @return bool True if the token was minted to a founder, false otherwise
+   */
+  function isFounderToken(uint256 _tokenId) public view returns (bool) {
+    // Get the scheduled recipient for the token ID
+    IToken.Founder memory founder = TOKEN().getScheduledRecipient(_tokenId);
+
+    // If there is no scheduled recipient:
+    if (founder.wallet == address(0)) {
+      return false;
+    }
+
+    // Else if the founder is still vesting:
+    if (block.timestamp < founder.vestExpiry) {
+      return true;
+    }
+
+    // Else the founder has finished vesting:
+    return false;
   }
 }
